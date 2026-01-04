@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"time"
 )
 
@@ -20,15 +22,65 @@ var colorsFlag = flag.Bool("colors", false, "colorized timer")
 var autostartFlag = flag.Bool("autostart", false, "start timer automatically")
 var recurringFlag = flag.Bool("recurring", false, "restart timer after alarm")
 var durationFlag = flag.Int("duration", 5, "default duration in minutes")
+var setFlag = flag.String("set", "", "set timer duration (e.g., 1h30m45s, 90m, 30s)")
 
 // exec commands
 var execStartFlag = flag.Bool("exec-start", false, "start the timer")
 var execStopFlag = flag.Bool("exec-stop", false, "stop the timer")
+var execGetFlag = flag.Bool("exec-get", false, "get current timer status")
 
 func debug(args ...interface{}) {
 	if *debugFlag {
 		log.Println(args...)
 	}
+}
+
+// parseDuration parses a duration string with h/m/s format
+// Examples: "1h30m", "90m", "45s", "1h30m45s"
+func parseDuration(s string) (time.Duration, error) {
+	if s == "" {
+		return 0, fmt.Errorf("empty duration string")
+	}
+
+	var totalDuration time.Duration
+
+	// Regular expressions to match hours, minutes, and seconds
+	hourRe := regexp.MustCompile(`(\d+)h`)
+	minuteRe := regexp.MustCompile(`(\d+)m`)
+	secondRe := regexp.MustCompile(`(\d+)s`)
+
+	// Extract hours
+	if matches := hourRe.FindStringSubmatch(s); len(matches) > 1 {
+		hours, err := strconv.Atoi(matches[1])
+		if err != nil {
+			return 0, fmt.Errorf("invalid hours value: %v", err)
+		}
+		totalDuration += time.Duration(hours) * time.Hour
+	}
+
+	// Extract minutes
+	if matches := minuteRe.FindStringSubmatch(s); len(matches) > 1 {
+		minutes, err := strconv.Atoi(matches[1])
+		if err != nil {
+			return 0, fmt.Errorf("invalid minutes value: %v", err)
+		}
+		totalDuration += time.Duration(minutes) * time.Minute
+	}
+
+	// Extract seconds
+	if matches := secondRe.FindStringSubmatch(s); len(matches) > 1 {
+		seconds, err := strconv.Atoi(matches[1])
+		if err != nil {
+			return 0, fmt.Errorf("invalid seconds value: %v", err)
+		}
+		totalDuration += time.Duration(seconds) * time.Second
+	}
+
+	if totalDuration == 0 {
+		return 0, fmt.Errorf("no valid duration found in string: %s", s)
+	}
+
+	return totalDuration, nil
 }
 
 // Timer holds data of the current timer
@@ -72,6 +124,12 @@ func (t *Timer) SubtractMinute() {
 		}
 		t.Save()
 	}
+}
+
+// SetDuration sets a custom duration for the timer
+func (t *Timer) SetDuration(d time.Duration) {
+	t.Duration = d
+	t.Save()
 }
 
 // Alarm executes what has been passed as `-alarm-command`
@@ -220,6 +278,20 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	// Handle --set flag to set custom duration
+	if *setFlag != "" {
+		duration, err := parseDuration(*setFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing duration: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Usage: --set <duration> (e.g., 1h30m45s, 90m, 30s)\n")
+			os.Exit(1)
+		}
+		timer.SetDuration(duration)
+		// Exit successfully without printing anything (for rofi script compatibility)
+		os.Exit(0)
+	}
+
 	// Check if an exec command has been passed
 	// Start the timer if `-exec-start` is passed
 	if *execStartFlag {
@@ -232,6 +304,11 @@ func main() {
 		if timer.IsRunning() {
 			timer.Reset()
 		}
+		return
+	}
+	if *execGetFlag {
+		// Output current timer status in a machine-readable format
+		fmt.Println(timer.String())
 		return
 	}
 	switch Button(os.Getenv("BLOCK_BUTTON")) {

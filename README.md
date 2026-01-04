@@ -83,6 +83,13 @@ If passed, the value of `-alarm-command` will be executed when the timer runs ou
 
 You can execute whatever program(s) you like.
 
+Added: You can use --set argument to set custom timers [e.g. 1h30m5s]
+
+
+```Example
+timer --set 1h30m5s
+```
+
 ## Key Bindings
 
 You can setup key bindings to start and stop the timer by using i3blocks' [signaling](https://github.com/vivien/i3blocks#signal) feature. What you should do is to create 2 additional blocks with no `interval` property but set the proper `signal` value for the blocks, then set i3 configuration to bind the emission of the given signals to a keyboard shortcut.
